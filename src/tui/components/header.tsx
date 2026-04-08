@@ -28,7 +28,7 @@ export function Header({ config, accounts, totalIncome, totalExpenses, transacti
       <Box flexDirection="column">
         <Box justifyContent="space-between">
           <Box>
-            <Text bold color="red">finchi</Text>
+            <Text bold color="yellow">finchi</Text>
             <Text dimColor>  {config.llmModel}</Text>
           </Box>
 
@@ -53,7 +53,7 @@ export function Header({ config, accounts, totalIncome, totalExpenses, transacti
         {/* Logo */}
         <Box flexDirection="column" width={36}>
           {(LOGO_LINES as string[]).map((line: string, i: number) => (
-            <Text key={i} color="red">{line}</Text>
+            <Text key={i}>{line}</Text>
           ))}
         </Box>
 
