@@ -1,25 +1,70 @@
 import type { Flags } from "../cli";
 import { getDb } from "../db/index";
+import { accounts } from "../db/schema";
 import { intro, log, outro } from "../tui/console";
 import { spinner } from "../tui/spinner";
+import { getFlagStrings } from "../cli-flags";
+import { wantsJson, printJsonSuccess } from "../cli-output";
+import { resolveDateWindow } from "../cli-dates";
 
 /** Truncate bank error messages to the first meaningful line. */
 function cleanError(error: string): string {
   const firstLine = error.split("\n")[0].trim();
   if (firstLine.startsWith("Error de login")) return "Credenciales incorrectas";
-  if (firstLine.length > 80) return firstLine.slice(0, 80) + "...";
+  if (firstLine.length > 80) return `${firstLine.slice(0, 80)}...`;
   return firstLine;
 }
 
-export async function run(_flags: Flags): Promise<void> {
+function parseNumberList(values: string[]): number[] {
+  return values.flatMap((value) => value.split(","))
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => {
+      const parsed = Number(value);
+      if (!Number.isInteger(parsed)) throw new Error(`ID invalido: ${value}`);
+      return parsed;
+    });
+}
+
+export async function run(flags: Flags): Promise<void> {
   const db = getDb();
+  const accountIds = parseNumberList(getFlagStrings(flags, "account-id"));
+  const bankIds = getFlagStrings(flags, "bank");
+  const window = resolveDateWindow(flags);
 
-  const { syncAllAccounts } = await import("../sync/sync");
-  const { accounts } = await import("../db/schema");
-  const allAccounts = db.select().from(accounts).all();
+  let selectedAccounts = await db.select().from(accounts).all();
+  if (accountIds.length > 0) {
+    selectedAccounts = selectedAccounts.filter((account) => accountIds.includes(account.id));
+  }
+  if (bankIds.length > 0) {
+    selectedAccounts = selectedAccounts.filter((account) => bankIds.includes(account.bankId));
+  }
 
-  if (allAccounts.length === 0) {
-    log.warning("No hay cuentas configuradas. Ejecuta 'finchi setup' primero.");
+  if (selectedAccounts.length === 0) {
+    log.warning("No hay cuentas configuradas o no coinciden con los filtros.");
+    return;
+  }
+
+  const { syncAccount } = await import("../sync/sync");
+
+  if (wantsJson(flags)) {
+    const results = [];
+    for (const account of selectedAccounts) {
+      try {
+        const result = await syncAccount(account.id, db, undefined, { window });
+        results.push(result);
+      } catch (err) {
+        results.push({
+          accountId: account.id,
+          bankId: account.bankId,
+          imported: 0,
+          skipped: 0,
+          total: 0,
+          error: err instanceof Error ? cleanError(err.message) : "Error desconocido",
+        });
+      }
+    }
+    printJsonSuccess(results, { effectiveRange: window, count: results.length });
     return;
   }
 
@@ -28,13 +73,12 @@ export async function run(_flags: Flags): Promise<void> {
   let totalImported = 0;
   let totalSkipped = 0;
 
-  for (const account of allAccounts) {
+  for (const account of selectedAccounts) {
     const s = spinner();
     s.start(`Conectando a ${account.name}...`);
 
     try {
-      const { syncAccount } = await import("../sync/sync");
-      const result = await syncAccount(account.id, db);
+      const result = await syncAccount(account.id, db, undefined, { window });
 
       if (result.error) {
         s.stop(`${account.name}: ${cleanError(result.error)}`, 1);

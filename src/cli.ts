@@ -2,33 +2,127 @@
 
 /** CLI entry point for finchi -- personal finance tracker for Chilean banks. */
 
-const HELP_TEXT = `
+import { appendFlagValue, type Flags } from "./cli-flags";
+export type { Flags } from "./cli-flags";
+import { printJsonFailure, wantsJson } from "./cli-output";
+
+const HELP_TOPICS: Record<string, string> = {
+  default: `
 finchi - Finanzas personales para bancos chilenos
 
 Uso:
-  finchi                       Abrir onboarding o dashboard segun tu setup
-  finchi setup                 Configuracion inicial (primera vez)
-  finchi setup bank            Agregar un banco nuevo
-  finchi setup provider        Configurar proveedor de IA
-  finchi setup model           Configurar proveedor de IA
-  finchi sync                  Sincronizar transacciones
-  finchi sync --3m             Sincronizar ultimos 3 meses
-  finchi categorize            Categorizar transacciones pendientes
-  finchi review                Revisar categorizaciones
-  finchi txns                  Listar transacciones
-  finchi txns --uncategorized  Solo sin categorizar
-  finchi txns --category <n>   Filtrar por categoria
-  finchi txns --from <fecha>   Desde fecha (YYYY-MM-DD)
-  finchi txns --to <fecha>     Hasta fecha (YYYY-MM-DD)
-  finchi dev                   Abrir dashboard con datos de prueba
-  finchi dev --with-account    Simular setup con cuenta pero sin provider
-  finchi dev --with-provider   Simular setup con provider pero sin cuenta
-  finchi dev --setup-mode <m>  Abrir setup dev directo (full|bank|model)
-  finchi dev --empty-import    Simular import sin transacciones nuevas
-  finchi --help, -h            Mostrar esta ayuda
-`.trim();
+  finchi                               Abrir onboarding o dashboard segun tu setup
+  finchi help [topic]                  Mostrar ayuda general o por dominio
 
-export type Flags = Record<string, string | boolean>;
+Dominios:
+  finchi sync [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--month YYYY-MM] [--json]
+  finchi txns [list] [filtros...] [--json]
+  finchi txns get --id <id> [--json]
+  finchi txns edit --id <id> [--category-id <id>] [--label <txt>] [--status <s>] [--json]
+  finchi txns bulk-edit [filtros...] [--set-category-id <id>] [--set-status <s>] [--json]
+  finchi dashboard summary [filtros...] [--json]
+  finchi review [list|confirm|bulk-confirm] [--json]
+  finchi providers [list|get|set|clear] [--json]
+  finchi accounts [banks|list|add|edit|remove] [--json]
+  finchi categories [groups|list|get|add|edit] [--json]
+  finchi config show [--json]
+
+Setup interactivo:
+  finchi setup
+  finchi setup bank
+  finchi setup provider
+
+Otros:
+  finchi categorize
+  finchi dev
+  finchi --help, -h
+
+Ejemplos:
+  finchi sync --month 2026-03 --json
+  finchi txns list --from 2026-03-01 --to 2026-03-31 --group Comida --json
+  finchi providers set --provider openai --model gpt-4.1-mini --api-key sk-... --json
+  finchi accounts add --bank bci --name "Cuenta BCI" --rut 12345678-9 --password secret --json
+`.trim(),
+  sync: `
+finchi help sync
+
+Uso:
+  finchi sync [--from YYYY-MM-DD] [--to YYYY-MM-DD]
+  finchi sync --month YYYY-MM
+  finchi sync --1m | --3m | --6m | --12m
+  finchi sync [--account-id <id>] [--bank <bank-id>] [--json]
+
+Notas:
+  - La insercion sigue siendo idempotente por hash.
+  - Si el scraper no soporta rangos, finchi filtra localmente antes de insertar.
+`.trim(),
+  txns: `
+finchi help txns
+
+Uso:
+  finchi txns list [filtros...] [--json]
+  finchi txns get --id <id> [--json]
+  finchi txns edit --id <id> [--category-id <id>|--category <name>] [--label <txt>] [--status <s>] [--source <s>] [--json]
+  finchi txns bulk-edit [--ids <id,id,...>|filtros...] [--set-category-id <id>|--set-category <name>] [--set-status <s>] [--json]
+
+Filtros:
+  --from YYYY-MM-DD
+  --to YYYY-MM-DD
+  --month YYYY-MM
+  --category <name>
+  --category-id <id>         Repetible
+  --group <name>             Repetible
+  --account <name>
+  --account-id <id>          Repetible
+  --source <name>            Repetible
+  --type income|expense
+  --status uncategorized|pending_review|confirmed
+  --search <texto>
+`.trim(),
+  accounts: `
+finchi help accounts
+
+Uso:
+  finchi accounts banks [--json]
+  finchi accounts list [--json]
+  finchi accounts add --bank <bank-id> --name <alias> --rut <rut> --password <pass> [--save env|memory] [--json]
+  finchi accounts edit --id <id> --name <alias> [--json]
+  finchi accounts remove --id <id> [--json]
+`.trim(),
+  providers: `
+finchi help providers
+
+Uso:
+  finchi providers list [--json]
+  finchi providers get [--json]
+  finchi providers set --provider <id> --model <model> --api-key <key> [--base-url <url>] [--json]
+  finchi providers clear [--json]
+`.trim(),
+  categories: `
+finchi help categories
+
+Uso:
+  finchi categories groups [--json]
+  finchi categories list [--group <name>] [--json]
+  finchi categories get --id <id> [--json]
+  finchi categories add --name <name> --group <group> [--emoji <emoji>] [--exclude-from-summary true|false] [--json]
+  finchi categories edit --id <id> [--name <name>] [--group <group>] [--emoji <emoji>] [--exclude-from-summary true|false] [--json]
+`.trim(),
+  review: `
+finchi help review
+
+Uso:
+  finchi review                 Abrir la UI de revision
+  finchi review list [--json]
+  finchi review confirm --id <id> [--json]
+  finchi review bulk-confirm --ids <id,id,...>|--all [--json]
+`.trim(),
+};
+
+export function getHelpText(topic?: string): string {
+  if (!topic) return HELP_TOPICS.default;
+  return HELP_TOPICS[topic] ?? HELP_TOPICS.default;
+}
 
 /**
  * Parse argv into a command name and a flags map.
@@ -57,15 +151,15 @@ export function parseArgs(argv: string[]): { command: string; flags: Flags } {
       const key = arg.slice(2);
       const next = args[i + 1];
       if (next && !next.startsWith("-")) {
-        flags[key] = next;
+        appendFlagValue(flags, key, next);
         i += 2;
       } else {
-        flags[key] = true;
+        appendFlagValue(flags, key, true);
         i++;
       }
     } else if (arg.startsWith("-")) {
       const key = arg.slice(1);
-      flags[key] = true;
+      appendFlagValue(flags, key, true);
       i++;
     } else {
       i++;
@@ -86,20 +180,47 @@ const COMMANDS: Record<string, () => Promise<{ run: CommandHandler }>> = {
   "setup provider": () => import("./commands/setup-model"),
   "setup model": () => import("./commands/setup-model"),
   review: () => import("./commands/review"),
+  "review list": () => import("./commands/review-list"),
+  "review confirm": () => import("./commands/review-confirm"),
+  "review bulk-confirm": () => import("./commands/review-bulk-confirm"),
   dashboard: () => import("./commands/dashboard"),
+  "dashboard summary": () => import("./commands/dashboard-summary"),
   dev: () => import("./commands/dev"),
+  "txns list": () => import("./commands/txns"),
+  "txns get": () => import("./commands/txns-get"),
+  "txns edit": () => import("./commands/txns-edit"),
+  "txns bulk-edit": () => import("./commands/txns-bulk-edit"),
+  accounts: () => import("./commands/accounts"),
+  "accounts list": () => import("./commands/accounts"),
+  "accounts banks": () => import("./commands/accounts-banks"),
+  "accounts add": () => import("./commands/accounts-add"),
+  "accounts edit": () => import("./commands/accounts-edit"),
+  "accounts remove": () => import("./commands/accounts-remove"),
+  providers: () => import("./commands/providers"),
+  "providers list": () => import("./commands/providers"),
+  "providers get": () => import("./commands/providers-get"),
+  "providers set": () => import("./commands/providers-set"),
+  "providers clear": () => import("./commands/providers-clear"),
+  categories: () => import("./commands/categories"),
+  "categories list": () => import("./commands/categories"),
+  "categories groups": () => import("./commands/categories-groups"),
+  "categories get": () => import("./commands/categories-get"),
+  "categories add": () => import("./commands/categories-add"),
+  "categories edit": () => import("./commands/categories-edit"),
+  "config show": () => import("./commands/config-show"),
 };
 
 async function main() {
   const { command, flags } = parseArgs(process.argv);
 
   if (flags["help"] || flags["h"]) {
-    console.log(HELP_TEXT);
+    console.log(getHelpText(command || undefined));
     return;
   }
 
-  if (command === "help") {
-    console.log(HELP_TEXT);
+  if (command === "help" || command.startsWith("help ")) {
+    const topic = command.startsWith("help ") ? command.slice(5) : undefined;
+    console.log(getHelpText(topic));
     return;
   }
 
@@ -120,7 +241,7 @@ async function main() {
   const loader = COMMANDS[command];
   if (!loader) {
     console.error(`Comando desconocido: ${command}`);
-    console.log(HELP_TEXT);
+    console.log(getHelpText());
     process.exit(1);
   }
 
@@ -130,7 +251,13 @@ async function main() {
 
 if (import.meta.main) {
   main().catch((err) => {
-    console.error("Error:", err instanceof Error ? err.message : err);
+    const { flags } = parseArgs(process.argv);
+    const message = err instanceof Error ? err.message : String(err);
+    if (wantsJson(flags)) {
+      printJsonFailure("command_failed", message);
+    } else {
+      console.error("Error:", message);
+    }
     process.exit(1);
   });
 }

@@ -19,11 +19,21 @@ export interface SyncResult {
   error?: string;
 }
 
+export interface SyncWindow {
+  from?: string;
+  to?: string;
+}
+
+interface SyncOptions {
+  window?: SyncWindow;
+}
+
 /** Sync a single account: scrape bank, normalize movements, insert new transactions. */
 export async function syncAccount(
   accountId: number,
   db: Db,
   onProgress?: (step: string) => void,
+  options?: SyncOptions,
 ): Promise<SyncResult> {
   const account = await db.select().from(accounts).where(eq(accounts.id, accountId)).get();
   if (!account) {
@@ -65,6 +75,13 @@ export async function syncAccount(
         balance: movement.balance,
         source: movement.source,
       };
+    })
+    .filter((movement) => {
+      const from = options?.window?.from;
+      const to = options?.window?.to;
+      if (from && movement.date < from) return false;
+      if (to && movement.date > to) return false;
+      return true;
     });
 
   const allHashes = normalized.map((m) => m.hash);
@@ -102,13 +119,14 @@ export async function syncAccount(
 export async function syncAllAccounts(
   db: Db,
   onProgress?: (step: string) => void,
+  options?: SyncOptions,
 ): Promise<SyncResult[]> {
   const allAccounts = await db.select().from(accounts).all();
   const results: SyncResult[] = [];
 
   for (const account of allAccounts) {
     try {
-      const result = await syncAccount(account.id, db, onProgress);
+      const result = await syncAccount(account.id, db, onProgress, options);
       results.push(result);
     } catch (error) {
       results.push({

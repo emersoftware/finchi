@@ -5,10 +5,14 @@ import type { Db } from "../db/index.js";
 export interface FilterState {
   from?: string;
   to?: string;
+  status?: "uncategorized" | "pending_review" | "confirmed";
+  statuses?: Array<"uncategorized" | "pending_review" | "confirmed">;
   categoryId?: number;
   categoryIds?: number[];
+  categoryName?: string;
   accountId?: number;
   accountIds?: number[];
+  accountName?: string;
   search?: string;
   groupName?: string;
   groupNames?: string[];
@@ -41,6 +45,7 @@ export function queryTransactions(db: Db, filters: FilterState): TransactionRow[
   const groupNames = filters.groupNames?.length ? filters.groupNames : filters.groupName ? [filters.groupName] : undefined;
   const amountTypes = filters.amountTypes?.length ? filters.amountTypes : filters.type ? [filters.type] : undefined;
   const sources = filters.sources?.length ? filters.sources : filters.source ? [filters.source] : undefined;
+  const statuses = filters.statuses?.length ? filters.statuses : filters.status ? [filters.status] : undefined;
 
   if (filters.from) {
     conditions.push(gte(transactions.date, filters.from));
@@ -51,8 +56,14 @@ export function queryTransactions(db: Db, filters: FilterState): TransactionRow[
   if (categoryIds) {
     conditions.push(inArray(transactions.categoryId, categoryIds));
   }
+  if (filters.categoryName) {
+    conditions.push(sql`lower(${categories.name}) = lower(${filters.categoryName})`);
+  }
   if (accountIds) {
     conditions.push(inArray(transactions.accountId, accountIds));
+  }
+  if (filters.accountName) {
+    conditions.push(sql`lower(${accounts.name}) = lower(${filters.accountName})`);
   }
   if (filters.search) {
     const term = `%${filters.search}%`;
@@ -70,6 +81,9 @@ export function queryTransactions(db: Db, filters: FilterState): TransactionRow[
   }
   if (sources) {
     conditions.push(inArray(transactions.source, sources));
+  }
+  if (statuses) {
+    conditions.push(inArray(transactions.status, statuses));
   }
 
   const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -98,6 +112,10 @@ export function queryTransactions(db: Db, filters: FilterState): TransactionRow[
     .all();
 
   return rows;
+}
+
+export function queryTransactionById(db: Db, id: number): TransactionRow | undefined {
+  return queryTransactions(db, {}).find((row) => row.id === id);
 }
 
 export function queryCategories(db: Db): Array<{ id: number; name: string; group: string }> {
