@@ -1,14 +1,14 @@
-import * as p from "@clack/prompts";
 import type { Flags } from "../cli";
 import { getDb } from "../db/index";
 import { loadConfig } from "../config";
+import { intro, log, outro } from "../tui/console";
 import { spinner } from "../tui/spinner";
 
 export async function run(_flags: Flags): Promise<void> {
   const db = getDb();
   const config = loadConfig();
 
-  p.intro("Categorizando transacciones");
+  intro("Categorizando transacciones");
 
   const s = spinner();
   s.start("Buscando transacciones pendientes...");
@@ -29,15 +29,15 @@ export async function run(_flags: Flags): Promise<void> {
     }
 
     if (result.error) {
-      p.log.warning(result.error);
+      log.warning(result.error);
     }
 
     if (total > 0) {
-      p.outro("Ejecuta 'finchi review' para revisar las categorias.");
+      outro("Ejecuta 'finchi review' para revisar las categorias.");
     } else if (result.failed > 0) {
-      p.outro("No se pudieron categorizar. Revisa tu configuracion con 'finchi setup model'.");
+      outro("No se pudieron categorizar. Revisa tu configuracion con 'finchi setup provider'.");
     } else {
-      p.outro("No hay transacciones pendientes.");
+      outro("No hay transacciones pendientes.");
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Error desconocido";

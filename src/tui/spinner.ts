@@ -1,11 +1,8 @@
-import * as p from "@clack/prompts";
-
 const FRAMES = ["⠁", "⠂", "⠄", "⠂"];
 const INTERVAL = 80;
 
 /**
- * Drop-in replacement for p.spinner() with bounce animation.
- * Same API: start(msg), stop(msg, code?), message(msg).
+ * Minimal terminal spinner for non-Ink commands.
  */
 export function spinner() {
   let timer: ReturnType<typeof setInterval> | null = null;

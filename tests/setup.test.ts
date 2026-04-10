@@ -9,7 +9,11 @@ import {
   writeEnvCredentials,
   insertAccount,
   envPrefix,
+  getActiveProviderConfig,
+  getStartupState,
+  resolveStartupState,
 } from "../src/flows/setup";
+import { resolveInitialSetupStep, resolvePostImportStep } from "../src/tui/setup";
 import { accounts } from "../src/db/schema";
 
 const TEST_ENV_PATH = ".env.test.setup";
@@ -113,13 +117,13 @@ describe("setup flow helpers", () => {
   describe("insertAccount", () => {
     it("inserts a row and returns the new id", async () => {
       const db = createTestDb();
-      const id = await insertAccount(db as any, "bchile", "Banco de Chile");
+      const id = await insertAccount(db as any, "bchile", "Cuenta principal");
       expect(id).toBe(1);
 
       const rows = await db.select().from(accounts).where(eq(accounts.id, id));
       expect(rows).toHaveLength(1);
       expect(rows[0].bankId).toBe("bchile");
-      expect(rows[0].name).toBe("Banco de Chile");
+      expect(rows[0].name).toBe("Cuenta principal");
     });
 
     it("returns incrementing ids for multiple accounts", async () => {
@@ -127,6 +131,111 @@ describe("setup flow helpers", () => {
       const id1 = await insertAccount(db as any, "bci", "BCI");
       const id2 = await insertAccount(db as any, "bchile", "Banco de Chile");
       expect(id2).toBeGreaterThan(id1);
+    });
+  });
+
+  describe("getActiveProviderConfig", () => {
+    const originalEnv = { ...process.env };
+
+    afterEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    it("returns null when no active provider is configured", () => {
+      delete process.env.LLM_PROVIDER;
+      delete process.env.LLM_MODEL;
+      delete process.env.ANTHROPIC_API_KEY;
+      expect(getActiveProviderConfig()).toBeNull();
+    });
+
+    it("returns provider and model when active provider is configured", () => {
+      process.env.LLM_PROVIDER = "openai";
+      process.env.LLM_MODEL = "gpt-4.1-mini";
+      process.env.OPENAI_API_KEY = "test-key";
+      const result = getActiveProviderConfig();
+      expect(result).toBeTruthy();
+      expect(result?.provider.id).toBe("openai");
+      expect(result?.model).toBe("gpt-4.1-mini");
+    });
+  });
+
+  describe("resolveStartupState", () => {
+    it("opens dashboard when provider and account are configured", () => {
+      expect(resolveStartupState(true, true)).toBe("dashboard");
+    });
+
+    it("asks for provider when there are accounts but no provider", () => {
+      expect(resolveStartupState(true, false)).toBe("missingProvider");
+    });
+
+    it("forces bank onboarding when there is provider but no account", () => {
+      expect(resolveStartupState(false, true)).toBe("missingAccount");
+    });
+
+    it("keeps full onboarding when nothing is configured", () => {
+      expect(resolveStartupState(false, false)).toBe("full");
+    });
+  });
+
+  describe("getStartupState", () => {
+    const originalEnv = { ...process.env };
+
+    afterEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    it("reads accounts from db and provider config from env", async () => {
+      const db = createTestDb();
+      await insertAccount(db as any, "bchile", "Cuenta principal");
+      process.env.LLM_PROVIDER = "openai";
+      process.env.LLM_MODEL = "gpt-4.1-mini";
+      process.env.OPENAI_API_KEY = "test-key";
+
+      expect(getStartupState(db as any)).toBe("dashboard");
+    });
+  });
+
+  describe("resolveInitialSetupStep", () => {
+    it("opens existing-account action when full setup already has account and provider", () => {
+      expect(resolveInitialSetupStep("full", true, true)).toBe("existingAccountAction");
+    });
+
+    it("asks for provider when full setup has account but no provider", () => {
+      expect(resolveInitialSetupStep("full", true, false)).toBe("missingProviderAction");
+    });
+
+    it("forces bank setup when provider exists but account is missing", () => {
+      expect(resolveInitialSetupStep("full", false, true)).toBe("missingAccountAction");
+    });
+
+    it("starts at provider flow for model-only setup without active provider", () => {
+      expect(resolveInitialSetupStep("model", false, false)).toBe("provider");
+    });
+
+    it("starts at bank picker for bank-only setup regardless of existing state", () => {
+      expect(resolveInitialSetupStep("bank", true, true)).toBe("bank");
+    });
+  });
+
+  describe("resolvePostImportStep", () => {
+    it("goes to categorize prompt after importing transactions with provider", () => {
+      expect(resolvePostImportStep("full", 2, true)).toBe("categorizePrompt");
+    });
+
+    it("goes to missing-provider prompt after importing transactions without provider", () => {
+      expect(resolvePostImportStep("full", 2, false)).toBe("missingProviderAction");
+    });
+
+    it("goes to summary for bank-only setup", () => {
+      expect(resolvePostImportStep("bank", 2, false)).toBe("summary");
+    });
+
+    it("goes to summary when no new transactions and provider already exists", () => {
+      expect(resolvePostImportStep("full", 0, true)).toBe("summary");
+    });
+
+    it("goes to missing-provider prompt when no new transactions and provider is missing", () => {
+      expect(resolvePostImportStep("full", 0, false)).toBe("missingProviderAction");
     });
   });
 });

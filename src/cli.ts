@@ -6,9 +6,10 @@ const HELP_TEXT = `
 finchi - Finanzas personales para bancos chilenos
 
 Uso:
-  finchi                       Abrir dashboard (o setup si es primera vez)
+  finchi                       Abrir onboarding o dashboard segun tu setup
   finchi setup                 Configuracion inicial (primera vez)
   finchi setup bank            Agregar un banco nuevo
+  finchi setup provider        Configurar proveedor de IA
   finchi setup model           Configurar proveedor de IA
   finchi sync                  Sincronizar transacciones
   finchi sync --3m             Sincronizar ultimos 3 meses
@@ -19,7 +20,11 @@ Uso:
   finchi txns --category <n>   Filtrar por categoria
   finchi txns --from <fecha>   Desde fecha (YYYY-MM-DD)
   finchi txns --to <fecha>     Hasta fecha (YYYY-MM-DD)
-  finchi dev                    Abrir dashboard con datos de prueba
+  finchi dev                   Abrir dashboard con datos de prueba
+  finchi dev --with-account    Simular setup con cuenta pero sin provider
+  finchi dev --with-provider   Simular setup con provider pero sin cuenta
+  finchi dev --setup-mode <m>  Abrir setup dev directo (full|bank|model)
+  finchi dev --empty-import    Simular import sin transacciones nuevas
   finchi --help, -h            Mostrar esta ayuda
 `.trim();
 
@@ -78,6 +83,7 @@ const COMMANDS: Record<string, () => Promise<{ run: CommandHandler }>> = {
   categorize: () => import("./commands/categorize"),
   setup: () => import("./commands/setup"),
   "setup bank": () => import("./commands/setup-bank"),
+  "setup provider": () => import("./commands/setup-model"),
   "setup model": () => import("./commands/setup-model"),
   review: () => import("./commands/review"),
   dashboard: () => import("./commands/dashboard"),
@@ -98,19 +104,13 @@ async function main() {
   }
 
   if (!command) {
-    // Default: check if accounts exist -> dashboard or setup
     try {
-      const { getDb } = await import("./db/index");
-      const { accounts } = await import("./db/schema");
-      const db = getDb();
-      const rows = await db.select().from(accounts).limit(1);
-      if (rows.length === 0) {
-        const mod = await COMMANDS["setup"]();
-        await mod.run(flags);
-      } else {
-        const mod = await COMMANDS["dashboard"]();
-        await mod.run(flags);
-      }
+      const { getStartupState } = await import("./flows/setup");
+      const startupState = getStartupState();
+      const mod = startupState === "dashboard"
+        ? await COMMANDS["dashboard"]()
+        : await COMMANDS["setup"]();
+      await mod.run(flags);
     } catch {
       console.log("Ejecuta 'finchi setup' para comenzar.");
     }

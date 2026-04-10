@@ -56,6 +56,16 @@ describe("parseArgs", () => {
     expect(flags["from"]).toBe("2025-01-01");
     expect(flags["to"]).toBe("2025-12-31");
   });
+
+  test("handles dev scenario flags", () => {
+    const { command, flags } = parseArgs([
+      "bun", "cli.ts", "dev", "--with-account", "--setup-mode", "bank", "--empty-import",
+    ]);
+    expect(command).toBe("dev");
+    expect(flags["with-account"]).toBe(true);
+    expect(flags["setup-mode"]).toBe("bank");
+    expect(flags["empty-import"]).toBe(true);
+  });
 });
 
 // ---------- formatCLP ----------

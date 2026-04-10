@@ -2,12 +2,13 @@ import { describe, test, expect, beforeEach } from "bun:test";
 import { createTestDb } from "./helpers.js";
 import type { Db } from "../src/db/index.js";
 import { accounts, categories, transactions } from "../src/db/schema.js";
-import { queryTransactions, queryCategories, queryAccounts } from "../src/tui/queries.js";
+import { queryTransactions, queryCategories, queryAccounts, queryGroups, querySources } from "../src/tui/queries.js";
 import {
   formatCLP,
   renderBar,
   paginate,
   aggregateByCategory,
+  aggregateByGroup,
   getMonthRange,
   getCurrentMonthRange,
 } from "../src/tui/format.js";
@@ -184,6 +185,44 @@ describe("aggregateByCategory", () => {
     expect(expenses).toHaveLength(1);
     expect(expenses[0].categoryName).toBe("Supermercado");
   });
+
+  test("excludes categories explicitly marked as excludeFromSummary", () => {
+    const rows = [
+      { amount: -300000, categoryId: 10, categoryName: "Transferencia interna", emoji: "", excludeFromSummary: true },
+      { amount: -50000, categoryId: 11, categoryName: "Supermercado", emoji: "", excludeFromSummary: false },
+    ];
+    const { expenses, totalExpenses } = aggregateByCategory(rows);
+    expect(totalExpenses).toBe(-50000);
+    expect(expenses).toHaveLength(1);
+    expect(expenses[0].categoryName).toBe("Supermercado");
+  });
+});
+
+describe("aggregateByGroup", () => {
+  test("groups expenses by category group", () => {
+    const rows = [
+      { amount: -10000, categoryGroup: "Comida", categoryName: "Supermercado", excludeFromSummary: false },
+      { amount: -5000, categoryGroup: "Comida", categoryName: "Restaurantes", excludeFromSummary: false },
+      { amount: -7000, categoryGroup: "Transporte", categoryName: "Metro", excludeFromSummary: false },
+    ];
+    const { groups, totalExpenses } = aggregateByGroup(rows);
+    expect(totalExpenses).toBe(-22000);
+    expect(groups).toHaveLength(2);
+    expect(groups[0].groupName).toBe("Comida");
+    expect(groups[0].total).toBe(-15000);
+  });
+
+  test("excludes rows marked out of summary", () => {
+    const rows = [
+      { amount: -10000, categoryGroup: "Transferencias", categoryName: "Interna", excludeFromSummary: true },
+      { amount: -8000, categoryGroup: "Comida", categoryName: "Cafe", excludeFromSummary: false },
+    ];
+    const { groups, totalExpenses } = aggregateByGroup(rows);
+    expect(totalExpenses).toBe(-8000);
+    expect(groups).toEqual([
+      { groupName: "Comida", total: -8000, percentage: 100 },
+    ]);
+  });
 });
 
 // ── Database queries ─────────────────────────────────────────────────────────
@@ -306,6 +345,12 @@ describe("queryTransactions", () => {
     expect(rows.every((row) => row.source === "account")).toBe(true);
   });
 
+  test("filters by search across raw, clean and llm label", () => {
+    expect(queryTransactions(db, { search: "Compra Lider" })).toHaveLength(1);
+    expect(queryTransactions(db, { search: "uber" })).toHaveLength(1);
+    expect(queryTransactions(db, { search: "sueldo" })).toHaveLength(1);
+  });
+
   test("combines multiple filters", () => {
     const rows = queryTransactions(db, {
       from: "2026-03-01",
@@ -365,5 +410,61 @@ describe("queryAccounts", () => {
     const result = queryAccounts(db);
     expect(result).toHaveLength(1);
     expect(result[0].name).toBe("Test Account");
+  });
+});
+
+describe("queryGroups", () => {
+  test("returns distinct non-empty groups", () => {
+    const db = createTestDb();
+    db.insert(categories).values([
+      { name: "Supermercado", emoji: "", group: "Comida" },
+      { name: "Restaurantes", emoji: "", group: "Comida" },
+      { name: "Sin grupo", emoji: "", group: "" },
+    ]).run();
+    expect(queryGroups(db)).toEqual(["Comida"]);
+  });
+});
+
+describe("querySources", () => {
+  test("returns distinct non-empty sources", () => {
+    const db = createTestDb();
+    db.insert(accounts).values({
+      id: 1,
+      bankId: "test",
+      name: "Cuenta Test",
+    }).run();
+    db.insert(transactions).values([
+      {
+        accountId: 1,
+        hash: "src-1",
+        date: "2026-04-01",
+        rawDescription: "A",
+        cleanDescription: "a",
+        amount: -1000,
+        source: "account",
+        status: "uncategorized",
+      },
+      {
+        accountId: 1,
+        hash: "src-2",
+        date: "2026-04-02",
+        rawDescription: "B",
+        cleanDescription: "b",
+        amount: -2000,
+        source: "credit_card_billed",
+        status: "uncategorized",
+      },
+      {
+        accountId: 1,
+        hash: "src-3",
+        date: "2026-04-03",
+        rawDescription: "C",
+        cleanDescription: "c",
+        amount: -3000,
+        source: "account",
+        status: "uncategorized",
+      },
+    ]).run();
+    expect(querySources(db).sort()).toEqual(["account", "credit_card_billed"]);
   });
 });

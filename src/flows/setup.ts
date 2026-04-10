@@ -1,11 +1,9 @@
-import * as p from "@clack/prompts";
 import { writeFileSync, readFileSync, existsSync } from "fs";
 import { getDb, type Db } from "../db/index";
 import { accounts, transactions } from "../db/schema";
 import { cleanDescription, convertDate, shouldSkipMovement } from "../sync/normalize";
 import { generateHash } from "../sync/dedup";
-import { printLogo } from "../tui/logo";
-import { spinner } from "../tui/spinner";
+import type { LLMProviderType } from "../config";
 
 /** Hardcoded fallback when open-banking-chile is unavailable. */
 const FALLBACK_BANKS = [
@@ -41,7 +39,7 @@ export async function loadBankList(): Promise<Bank[]> {
   return [...FALLBACK_BANKS];
 }
 
-/** Format banks as options for clack select. */
+/** Format banks as options for select UIs. */
 export function toBankOptions(banks: Bank[]): { value: string; label: string }[] {
   return banks.map((b) => ({ value: b.id, label: b.name }));
 }
@@ -88,7 +86,7 @@ export async function insertAccount(db: Db, bankId: string, bankName: string): P
 }
 
 /** Scrape a bank and return the result, or null on failure. */
-async function scrapeBank(
+export async function scrapeBank(
   bankId: string,
   rut: string,
   password: string,
@@ -106,7 +104,7 @@ async function scrapeBank(
 }
 
 /** Insert scraped movements into the DB. Returns count of new rows. */
-async function insertMovements(
+export async function insertMovements(
   db: Db,
   accountId: number,
   movements: any[],
@@ -141,166 +139,154 @@ async function insertMovements(
 }
 
 /** Try to run the categorize module if available. Returns count categorized. */
-async function tryCategorize(db: Db): Promise<number> {
+export async function tryCategorize(db: Db): Promise<{ count: number; warnings: string[] }> {
+  const warnings: string[] = [];
   try {
     const { categorizeTransactions } = await import("../categorize/classify");
     const { loadConfig } = await import("../config");
     const config = loadConfig();
     const result = await categorizeTransactions(db, config);
     if (result.error) {
-      p.log.warning(result.error);
+      warnings.push(result.error);
     }
-    return result.fuzzyMatched + result.llmCategorized;
+    return {
+      count: result.fuzzyMatched + result.llmCategorized,
+      warnings,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    p.log.warning(`Error al categorizar: ${msg}`);
-    return 0;
+    warnings.push(`Error al categorizar: ${msg}`);
+    return { count: 0, warnings };
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main flow
-// ---------------------------------------------------------------------------
+export interface ProviderOption {
+  id: LLMProviderType;
+  name: string;
+  models: string[];
+  envKey: string;
+  baseUrl?: string;
+}
 
-export async function runSetup(): Promise<void> {
-  printLogo();
-  p.intro("Configuracion inicial");
-
-  // Step 1 -- bank selection
-  const banks = await loadBankList();
-  const bankId = await p.select({
-    message: "Selecciona tu banco",
-    options: toBankOptions(banks),
-  });
-  if (p.isCancel(bankId)) {
-    p.cancel("Setup cancelado.");
-    return;
-  }
-
-  const selectedBank = banks.find((b) => b.id === bankId)!;
-
-  // Step 2 -- RUT
-  const rut = await p.text({
-    message: "Ingresa tu RUT (ej: 12345678-9)",
-    validate: (val) => {
-      if (!val || val.trim().length === 0) return "El RUT es obligatorio";
-    },
-  });
-  if (p.isCancel(rut)) {
-    p.cancel("Setup cancelado.");
-    return;
-  }
-
-  // Step 3 -- password
-  const password = await p.password({
-    message: "Ingresa tu clave de internet",
-    validate: (val) => {
-      if (!val || val.length === 0) return "La clave es obligatoria";
-    },
-  });
-  if (p.isCancel(password)) {
-    p.cancel("Setup cancelado.");
-    return;
-  }
-
-  // Step 4 -- how to save credentials
-  const saveMode = await p.select({
-    message: "¿Como quieres guardar las credenciales?",
-    options: [
-      { value: "env", label: "Guardar en .env" },
-      { value: "memory", label: "Solo usar esta vez" },
+export const PROVIDERS: ProviderOption[] = [
+  {
+    id: "anthropic",
+    name: "Anthropic (Claude)",
+    models: [
+      "claude-sonnet-4-20250514",
+      "claude-haiku-4-20250414",
+      "claude-opus-4-20250514",
     ],
-  });
-  if (p.isCancel(saveMode)) {
-    p.cancel("Setup cancelado.");
-    return;
-  }
+    envKey: "ANTHROPIC_API_KEY",
+  },
+  {
+    id: "openai",
+    name: "OpenAI",
+    models: [
+      "gpt-4.1",
+      "gpt-4.1-mini",
+      "gpt-4.1-nano",
+      "gpt-4o",
+      "gpt-4o-mini",
+      "o3-mini",
+    ],
+    envKey: "OPENAI_API_KEY",
+  },
+  {
+    id: "google",
+    name: "Google (Gemini)",
+    models: [
+      "gemini-2.5-flash-preview-05-20",
+      "gemini-2.5-pro-preview-05-06",
+      "gemini-2.0-flash",
+      "gemini-2.0-flash-lite",
+    ],
+    envKey: "GOOGLE_API_KEY",
+  },
+  {
+    id: "openrouter",
+    name: "OpenRouter",
+    models: [
+      "anthropic/claude-sonnet-4",
+      "openai/gpt-4.1",
+      "google/gemini-2.5-flash-preview",
+      "deepseek/deepseek-chat-v3-0324",
+      "meta-llama/llama-4-maverick",
+    ],
+    envKey: "OPENAI_API_KEY",
+    baseUrl: "https://openrouter.ai/api/v1",
+  },
+  {
+    id: "minimax",
+    name: "MiniMax",
+    models: [
+      "MiniMax-M1",
+      "MiniMax-T1",
+    ],
+    envKey: "OPENAI_API_KEY",
+    baseUrl: "https://api.minimax.chat/v1",
+  },
+];
 
-  if (saveMode === "env") {
-    writeEnvCredentials(".env", bankId, rut, password);
-    p.log.success("Credenciales guardadas en .env");
-  }
+export type LLMProviderOption = ProviderOption;
 
-  // Step 5 -- insert account into DB
-  const db = getDb();
-  const accountId = await insertAccount(db, bankId, selectedBank.name);
-  p.log.success(`Cuenta creada: ${selectedBank.name}`);
+export interface ActiveProviderConfig {
+  provider: ProviderOption;
+  model: string;
+}
 
-  // Step 6 -- scrape bank (single scrape used for both test and import)
-  const s1 = spinner();
-  s1.start("Conectando al banco e importando transacciones...");
-  const scrapeResult = await scrapeBank(bankId, rut, password);
-  let importedCount = 0;
-  if (scrapeResult) {
-    importedCount = await insertMovements(db, accountId, scrapeResult.movements);
-    s1.stop(`${importedCount} transacciones importadas`);
+export type StartupState = "dashboard" | "missingProvider" | "missingAccount" | "full";
+
+export function getActiveProviderConfig(): ActiveProviderConfig | null {
+  const providerId = process.env.LLM_PROVIDER as LLMProviderType | undefined;
+  const model = process.env.LLM_MODEL;
+  if (!providerId || !model) return null;
+
+  const provider = PROVIDERS.find((item) => item.id === providerId);
+  if (!provider) return null;
+
+  const apiKey = process.env[provider.envKey];
+  if (!apiKey) return null;
+
+  return { provider, model };
+}
+
+export function resolveStartupState(hasAccounts: boolean, hasProvider: boolean): StartupState {
+  if (hasAccounts && hasProvider) return "dashboard";
+  if (hasAccounts) return "missingProvider";
+  if (hasProvider) return "missingAccount";
+  return "full";
+}
+
+export function getStartupState(db: Db = getDb()): StartupState {
+  const hasAccounts = db.select().from(accounts).all().length > 0;
+  const hasProvider = getActiveProviderConfig() !== null;
+  return resolveStartupState(hasAccounts, hasProvider);
+}
+
+export function saveModelConfig(
+  envPath: string,
+  provider: ProviderOption,
+  model: string,
+  apiKey: string,
+): void {
+  let content = existsSync(envPath) ? readFileSync(envPath, "utf-8") : "";
+  content = upsertEnvLine(content, "LLM_PROVIDER", provider.id);
+  content = upsertEnvLine(content, "LLM_MODEL", model);
+  content = upsertEnvLine(content, provider.envKey, apiKey);
+  if (provider.baseUrl) {
+    content = upsertEnvLine(content, "LLM_BASE_URL", provider.baseUrl);
   } else {
-    s1.stop("No se pudo conectar al banco");
-
-    const retry = await p.confirm({
-      message: "Quieres intentar de nuevo?",
-      initialValue: true,
-    });
-    if (p.isCancel(retry) || !retry) {
-      p.log.warning("Cuenta guardada. Puedes sincronizar despues con 'finchi sync'.");
-      p.outro("Ejecuta 'finchi sync' cuando estes listo.");
-      return;
-    }
-
-    // Retry once
-    const s2 = spinner();
-    s2.start("Reintentando conexion...");
-    const retryResult = await scrapeBank(bankId, rut, password);
-    if (retryResult) {
-      importedCount = await insertMovements(db, accountId, retryResult.movements);
-      s2.stop(`${importedCount} transacciones importadas`);
-    } else {
-      s2.stop("No se pudo conectar");
-      p.log.warning("Cuenta guardada. Puedes sincronizar despues con 'finchi sync'.");
-      p.outro("Ejecuta 'finchi sync' cuando estes listo.");
-      return;
-    }
+    content = upsertEnvLine(content, "LLM_BASE_URL", "");
   }
+  writeFileSync(envPath, content);
 
-  if (importedCount === 0) {
-    p.log.warning("No se encontraron transacciones nuevas.");
-    p.outro("Ejecuta 'finchi sync' mas tarde para importar.");
-    return;
+  process.env.LLM_PROVIDER = provider.id;
+  process.env.LLM_MODEL = model;
+  process.env[provider.envKey] = apiKey;
+  if (provider.baseUrl) {
+    process.env.LLM_BASE_URL = provider.baseUrl;
+  } else {
+    delete process.env.LLM_BASE_URL;
   }
-
-  // Step 7 -- LLM provider setup for categorization
-  const wantsCategorize = await p.confirm({
-    message: `Quieres categorizar las ${importedCount} transacciones con IA?`,
-    initialValue: true,
-  });
-  if (p.isCancel(wantsCategorize)) {
-    p.cancel("Setup cancelado.");
-    return;
-  }
-
-  let categorizedCount = 0;
-  if (wantsCategorize) {
-    // Delegate to setup-model flow
-    const { run: setupModel } = await import("../commands/setup-model");
-    await setupModel({});
-
-    const s3 = spinner();
-    s3.start("Categorizando transacciones...");
-    categorizedCount = await tryCategorize(db);
-    s3.stop(`${categorizedCount} transacciones categorizadas`);
-  }
-
-  // Step 8 -- summary and launch dashboard
-  p.note(
-    `${importedCount} transacciones importadas\n${categorizedCount} categorizadas`,
-    "Resumen",
-  );
-  p.outro("Setup completo!");
-
-  // Launch dashboard
-  const { render } = await import("ink");
-  const React = (await import("react")).default;
-  const { DashboardApp } = await import("../tui/app");
-  const { waitUntilExit } = render(React.createElement(DashboardApp, { db }));
-  await waitUntilExit();
 }

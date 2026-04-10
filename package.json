@@ -14,7 +14,6 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@clack/prompts": "^0.9.1",
     "@google/generative-ai": "^0.24.0",
     "asciichart": "^1.5.25",
     "dotenv": "^16.4.7",

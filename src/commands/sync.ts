@@ -1,6 +1,6 @@
-import * as p from "@clack/prompts";
 import type { Flags } from "../cli";
 import { getDb } from "../db/index";
+import { intro, log, outro } from "../tui/console";
 import { spinner } from "../tui/spinner";
 
 /** Truncate bank error messages to the first meaningful line. */
@@ -19,11 +19,11 @@ export async function run(_flags: Flags): Promise<void> {
   const allAccounts = db.select().from(accounts).all();
 
   if (allAccounts.length === 0) {
-    p.log.warning("No hay cuentas configuradas. Ejecuta 'finchi setup' primero.");
+    log.warning("No hay cuentas configuradas. Ejecuta 'finchi setup' primero.");
     return;
   }
 
-  p.intro("Sincronizando transacciones");
+  intro("Sincronizando transacciones");
 
   let totalImported = 0;
   let totalSkipped = 0;
@@ -49,5 +49,5 @@ export async function run(_flags: Flags): Promise<void> {
     }
   }
 
-  p.outro(`${totalImported} nuevas transacciones, ${totalSkipped} duplicados omitidos`);
+  outro(`${totalImported} nuevas transacciones, ${totalSkipped} duplicados omitidos`);
 }

@@ -1,6 +1,10 @@
 import type { Flags } from "../cli";
-import { runSetup } from "../flows/setup";
+import { runSetupInk } from "../tui/setup";
 
 export async function run(_flags: Flags): Promise<void> {
-  await runSetup();
+  const result = await runSetupInk("full");
+  if (result.action === "dashboard") {
+    const mod = await import("./dashboard");
+    await mod.run({});
+  }
 }
