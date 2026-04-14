@@ -1,6 +1,6 @@
 {
   "name": "finchi",
-  "version": "0.1.0",
+  "version": "1.1.0",
   "type": "module",
   "bin": {
     "finchi": "src/cli.ts"
@@ -19,7 +19,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
     "@google/generative-ai": "^0.24.0",
-    "asciichart": "^1.5.25",
     "dotenv": "^16.4.7",
     "drizzle-orm": "^0.39.3",
     "fastest-levenshtein": "^1.0.16",
