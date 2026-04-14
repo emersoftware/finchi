@@ -2,6 +2,7 @@ import type { Flags } from "../cli";
 import { getFlagString } from "../cli-flags";
 import { printJsonSuccess, wantsJson } from "../cli-output";
 import { setProviderConfig } from "../domain/configuration";
+import { getEnvPath } from "../config";
 
 export async function run(flags: Flags): Promise<void> {
   const provider = getFlagString(flags, "provider");
@@ -12,7 +13,7 @@ export async function run(flags: Flags): Promise<void> {
     throw new Error("Debes pasar --provider, --model y --api-key.");
   }
 
-  const snapshot = setProviderConfig(".env", provider, model, apiKey, baseUrl);
+  const snapshot = setProviderConfig(getEnvPath(), provider, model, apiKey, baseUrl);
   if (wantsJson(flags)) {
     printJsonSuccess(snapshot);
     return;

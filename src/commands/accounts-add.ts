@@ -3,6 +3,7 @@ import { getDb } from "../db/index";
 import { getFlagString } from "../cli-flags";
 import { printJsonSuccess, wantsJson } from "../cli-output";
 import { addAccount } from "../domain/configuration";
+import { getEnvPath } from "../config";
 
 export async function run(flags: Flags): Promise<void> {
   const bankId = getFlagString(flags, "bank");
@@ -23,7 +24,7 @@ export async function run(flags: Flags): Promise<void> {
     name,
     rut,
     password,
-    envPath: saveMode === "memory" ? null : ".env",
+    envPath: saveMode === "memory" ? null : getEnvPath(),
   });
 
   if (wantsJson(flags)) {

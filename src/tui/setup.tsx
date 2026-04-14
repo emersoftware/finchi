@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { Box, Text, useApp, useInput } from "ink";
 import type { Db } from "../db/index";
 import { getDb } from "../db/index";
+import { getEnvPath } from "../config";
 import { accounts } from "../db/schema";
 import { LOGO_LINES } from "./logo";
 import {
@@ -325,7 +326,7 @@ export function SetupApp({ mode, onComplete, db: providedDb, options }: SetupApp
 
     try {
       if (saveModeIndex === 0 && options?.envPath !== null) {
-        const envPath = options?.envPath ?? ".env";
+        const envPath = options?.envPath ?? getEnvPath();
         const persistCredentials = options?.writeEnvCredentials ?? writeEnvCredentials;
         persistCredentials(envPath, selectedBank.id, rut, password);
       }
@@ -394,7 +395,7 @@ export function SetupApp({ mode, onComplete, db: providedDb, options }: SetupApp
     }
 
     if (options?.envPath !== null) {
-      const envPath = options?.envPath ?? ".env";
+      const envPath = options?.envPath ?? getEnvPath();
       const persistModelConfig = options?.saveModelConfig ?? saveModelConfig;
       persistModelConfig(envPath, provider, model, apiKey);
     }

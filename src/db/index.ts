@@ -1,5 +1,7 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Database } from "bun:sqlite";
+import { mkdirSync } from "fs";
+import { dirname } from "path";
 import { loadConfig } from "../config";
 import * as schema from "./schema";
 import { seed } from "./seed";
@@ -59,6 +61,7 @@ let _db: ReturnType<typeof drizzle> | null = null;
 export function getDb() {
   if (!_db) {
     const config = loadConfig();
+    mkdirSync(dirname(config.dbPath), { recursive: true });
     const sqlite = initSqlite(config.dbPath);
     _db = drizzle(sqlite, { schema });
     seed(_db);

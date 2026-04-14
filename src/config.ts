@@ -1,4 +1,17 @@
-import "dotenv/config";
+import { config as dotenvConfig } from "dotenv";
+import { homedir } from "os";
+import { join } from "path";
+
+export const FINCHI_HOME = join(homedir(), ".finchi");
+export const FINCHI_ENV_PATH = join(FINCHI_HOME, ".env");
+
+// Load ~/.finchi/.env first (lower priority), then CWD .env (override — dev wins)
+dotenvConfig({ path: FINCHI_ENV_PATH });
+dotenvConfig({ path: join(process.cwd(), ".env"), override: true });
+
+export function getEnvPath(): string {
+  return FINCHI_ENV_PATH;
+}
 
 export type LLMProviderType = "anthropic" | "openai" | "google" | "openrouter" | "minimax";
 
@@ -16,7 +29,7 @@ export interface Config {
 
 export function loadConfig(): Config {
   return {
-    dbPath: process.env.FINCHI_DB_PATH || "./finchi.db",
+    dbPath: process.env.FINCHI_DB_PATH || join(FINCHI_HOME, "finchi.db"),
     llmProvider: (process.env.LLM_PROVIDER as LLMProviderType) || "anthropic",
     llmModel: process.env.LLM_MODEL || defaultModelForProvider((process.env.LLM_PROVIDER as LLMProviderType) || "anthropic"),
     llmBaseUrl: process.env.LLM_BASE_URL || defaultBaseUrl((process.env.LLM_PROVIDER as LLMProviderType) || "anthropic"),

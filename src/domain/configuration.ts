@@ -2,6 +2,7 @@ import { existsSync, readFileSync, writeFileSync } from "fs";
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/index";
 import { accounts, categories } from "../db/schema";
+import { getEnvPath } from "../config";
 import {
   getActiveProviderConfig,
   loadBankList,
@@ -106,7 +107,7 @@ export async function addAccount(
 ): Promise<{ id: number; bankId: string; name: string; savedCredentials: "env" | "memory" }> {
   const result = await db.insert(accounts).values({ bankId: options.bankId, name: options.name }).returning();
   if (options.envPath !== null) {
-    const target = options.envPath ?? ".env";
+    const target = options.envPath ?? getEnvPath();
     writeEnvCredentials(target, options.bankId, options.rut, options.password);
   }
   const prefix = options.bankId.toUpperCase().replace(/-/g, "_");
