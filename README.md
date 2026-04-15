@@ -35,7 +35,7 @@ Todo lo persistente vive en `~/.finchi/`:
 | `~/.finchi/finchi.db` | Base de datos SQLite (se crea automáticamente en el primer uso) |
 | `~/.finchi/.env` | API keys y credenciales bancarias |
 
-Podés sobreescribir la ruta de la base de datos con `FINCHI_DB_PATH=<ruta>`.
+Puedes sobrescribir la ruta de la base de datos con `FINCHI_DB_PATH=<ruta>`.
 
 ---
 
