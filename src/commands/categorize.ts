@@ -3,6 +3,7 @@ import { getDb } from "../db/index";
 import { loadConfig } from "../config";
 import { intro, log, outro } from "../tui/console";
 import { spinner } from "../tui/spinner";
+import { logHandledError } from "../error-log";
 
 export async function run(_flags: Flags): Promise<void> {
   const db = getDb();
@@ -29,6 +30,9 @@ export async function run(_flags: Flags): Promise<void> {
     }
 
     if (result.error) {
+      logHandledError(new Error(result.error), {
+        source: "categorize.command",
+      });
       log.warning(result.error);
     }
 
@@ -40,6 +44,9 @@ export async function run(_flags: Flags): Promise<void> {
       outro("No hay transacciones pendientes.");
     }
   } catch (err) {
+    logHandledError(err, {
+      source: "categorize.command",
+    });
     const msg = err instanceof Error ? err.message : "Error desconocido";
     s.stop(`Error: ${msg}`, 1);
   }

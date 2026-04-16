@@ -6,6 +6,8 @@ import type { Flags } from "./cli-flags";
 
 const LOG_DIR = join(FINCHI_HOME, "logs");
 const ERROR_LOG_PATH = join(LOG_DIR, "errors.ndjson");
+const LOGGED_ERROR = Symbol.for("finchi.errorLogged");
+let logDirReady = false;
 
 const SENSITIVE_ENV_KEYS = [
   "ANTHROPIC_API_KEY",
@@ -38,6 +40,8 @@ interface ErrorLogEntry {
     message: string;
     stack?: string;
   };
+  source?: string;
+  details?: Record<string, unknown>;
 }
 
 function redactSecrets(input: string): string {
@@ -113,10 +117,33 @@ export function getErrorLogPath(): string {
   return ERROR_LOG_PATH;
 }
 
-export function writeErrorLog(err: unknown, flags: Flags): string {
-  mkdirSync(LOG_DIR, { recursive: true });
+type LoggedError = Error & { [LOGGED_ERROR]?: boolean };
 
-  const error = err instanceof Error ? err : new Error(String(err));
+function toError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+function isLoggedError(err: Error): boolean {
+  return (err as LoggedError)[LOGGED_ERROR] === true;
+}
+
+function markErrorAsLogged(err: Error): void {
+  (err as LoggedError)[LOGGED_ERROR] = true;
+}
+
+export function writeErrorLog(
+  err: unknown,
+  flags: Flags,
+  options?: { source?: string; details?: Record<string, unknown> },
+): string {
+  if (!logDirReady) {
+    mkdirSync(LOG_DIR, { recursive: true });
+    logDirReady = true;
+  }
+
+  const error = toError(err);
+  if (isLoggedError(error)) return ERROR_LOG_PATH;
+
   const entry: ErrorLogEntry = {
     timestamp: new Date().toISOString(),
     version: pkg.version,
@@ -134,10 +161,27 @@ export function writeErrorLog(err: unknown, flags: Flags): string {
       message: sanitizeErrorLogText(error.message),
       stack: error.stack ? sanitizeErrorLogText(error.stack) : undefined,
     },
+    source: options?.source,
+    details: options?.details,
   };
 
   appendFileSync(ERROR_LOG_PATH, `${JSON.stringify(entry)}\n`, "utf-8");
+  markErrorAsLogged(error);
   return ERROR_LOG_PATH;
+}
+
+export function logHandledError(
+  err: unknown,
+  options?: {
+    flags?: Flags;
+    source?: string;
+    details?: Record<string, unknown>;
+  },
+): string {
+  return writeErrorLog(err, options?.flags ?? {}, {
+    source: options?.source,
+    details: options?.details,
+  });
 }
 
 export function getErrorLogHint(logPath: string): string {
@@ -145,6 +189,5 @@ export function getErrorLogHint(logPath: string): string {
 }
 
 export function sanitizeErrorForUser(err: unknown): string {
-  const error = err instanceof Error ? err : new Error(String(err));
-  return sanitizeErrorLogText(error.message);
+  return sanitizeErrorLogText(toError(err).message);
 }

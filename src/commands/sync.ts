@@ -6,6 +6,7 @@ import { spinner } from "../tui/spinner";
 import { getFlagStrings } from "../cli-flags";
 import { wantsJson, printJsonSuccess } from "../cli-output";
 import { resolveDateWindow } from "../cli-dates";
+import { logHandledError } from "../error-log";
 
 /** Truncate bank error messages to the first meaningful line. */
 function cleanError(error: string): string {
@@ -54,6 +55,11 @@ export async function run(flags: Flags): Promise<void> {
         const result = await syncAccount(account.id, db, undefined, { window });
         results.push(result);
       } catch (err) {
+        logHandledError(err, {
+          flags,
+          source: "sync.command.json",
+          details: { accountId: account.id, bankId: account.bankId },
+        });
         results.push({
           accountId: account.id,
           bankId: account.bankId,
@@ -88,6 +94,11 @@ export async function run(flags: Flags): Promise<void> {
         totalSkipped += result.skipped;
       }
     } catch (err) {
+      logHandledError(err, {
+        flags,
+        source: "sync.command",
+        details: { accountId: account.id, bankId: account.bankId },
+      });
       const msg = err instanceof Error ? cleanError(err.message) : "Error desconocido";
       s.stop(`${account.name}: ${msg}`, 1);
     }

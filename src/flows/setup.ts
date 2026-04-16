@@ -4,6 +4,7 @@ import { accounts, transactions } from "../db/schema";
 import { cleanDescription, convertDate, shouldSkipMovement } from "../sync/normalize";
 import { generateHash } from "../sync/dedup";
 import type { LLMProviderType } from "../config";
+import { logHandledError } from "../error-log";
 
 /** Hardcoded fallback when open-banking-chile is unavailable. */
 const FALLBACK_BANKS = [
@@ -94,11 +95,27 @@ export async function scrapeBank(
   try {
     const mod = await import("open-banking-chile");
     const bank = mod.getBank?.(bankId);
-    if (!bank) return null;
+    if (!bank) {
+      logHandledError(new Error(`Banco "${bankId}" no encontrado.`), {
+        source: "setup.scrapeBank",
+        details: { bankId },
+      });
+      return null;
+    }
     const result = await bank.scrape({ rut, password });
-    if (!result?.success || !result.movements) return null;
+    if (!result?.success || !result.movements) {
+      logHandledError(new Error(result?.error || "No se pudo conectar al banco"), {
+        source: "setup.scrapeBank",
+        details: { bankId },
+      });
+      return null;
+    }
     return { movements: result.movements };
-  } catch {
+  } catch (err) {
+    logHandledError(err, {
+      source: "setup.scrapeBank",
+      details: { bankId },
+    });
     return null;
   }
 }
@@ -147,6 +164,9 @@ export async function tryCategorize(db: Db): Promise<{ count: number; warnings: 
     const config = loadConfig();
     const result = await categorizeTransactions(db, config);
     if (result.error) {
+      logHandledError(new Error(result.error), {
+        source: "setup.tryCategorize",
+      });
       warnings.push(result.error);
     }
     return {
@@ -155,6 +175,9 @@ export async function tryCategorize(db: Db): Promise<{ count: number; warnings: 
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    logHandledError(err, {
+      source: "setup.tryCategorize",
+    });
     warnings.push(`Error al categorizar: ${msg}`);
     return { count: 0, warnings };
   }

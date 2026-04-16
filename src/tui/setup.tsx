@@ -4,6 +4,7 @@ import type { Db } from "../db/index";
 import { getDb } from "../db/index";
 import { getEnvPath } from "../config";
 import { accounts } from "../db/schema";
+import { logHandledError } from "../error-log";
 import { LOGO_LINES } from "./logo";
 import {
   type ActiveProviderConfig,
@@ -351,6 +352,10 @@ export function SetupApp({ mode, onComplete, db: providedDb, options }: SetupApp
       setStatus(imported === 0 ? "No se encontraron transacciones nuevas." : `${imported} transacciones importadas`);
       setStep(resolvePostImportStep(mode, imported, !!activeProviderConfig));
     } catch (err) {
+      logHandledError(err, {
+        source: "tui.setup.runImport",
+        details: { bankId: selectedBank.id },
+      });
       setStatus(err instanceof Error ? err.message : "Error al importar transacciones");
       setStep("retry");
     } finally {
@@ -372,6 +377,9 @@ export function SetupApp({ mode, onComplete, db: providedDb, options }: SetupApp
       setStatus(`${result.count} transacciones categorizadas`);
       setStep("summary");
     } catch (err) {
+      logHandledError(err, {
+        source: "tui.setup.runCategorization",
+      });
       setWarnings([]);
       setError(err instanceof Error ? err.message : "Error al categorizar");
       setStep("summary");

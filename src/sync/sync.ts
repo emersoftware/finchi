@@ -6,6 +6,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { Db } from "../db";
 import { accounts, transactions } from "../db/schema";
 import { getBankCredentials } from "../config";
+import { logHandledError } from "../error-log";
 import { scrapeBank } from "./bank-client";
 import { cleanDescription, convertDate, shouldSkipMovement } from "./normalize";
 import { generateHash } from "./dedup";
@@ -51,6 +52,10 @@ export async function syncAccount(
   const result = await scrapeBank(account.bankId, credentials, onProgress);
 
   if (!result.success) {
+    logHandledError(new Error(result.error || "Error desconocido al sincronizar"), {
+      source: "syncAccount",
+      details: { accountId, bankId: account.bankId },
+    });
     return {
       accountId,
       bankId: account.bankId,
@@ -129,6 +134,10 @@ export async function syncAllAccounts(
       const result = await syncAccount(account.id, db, onProgress, options);
       results.push(result);
     } catch (error) {
+      logHandledError(error, {
+        source: "syncAllAccounts",
+        details: { accountId: account.id, bankId: account.bankId },
+      });
       results.push({
         accountId: account.id,
         bankId: account.bankId,

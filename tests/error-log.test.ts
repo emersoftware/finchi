@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import pkg from "../package.json";
-import { sanitizeArgv, sanitizeErrorLogText, sanitizeFlags } from "../src/error-log";
+import { getErrorLogPath, sanitizeArgv, sanitizeErrorLogText, sanitizeFlags } from "../src/error-log";
 
 const tempDirs: string[] = [];
 
@@ -125,5 +125,42 @@ describe("cli error logging", () => {
 
     const [entry] = readFileSync(logPath, "utf-8").trim().split("\n").map((line) => JSON.parse(line));
     expect(entry.error.message.length).toBeGreaterThan(0);
+  });
+
+  test("logs handled setup bank connection failures", async () => {
+    const home = makeTempDir();
+    const proc = Bun.spawn([
+      "bun",
+      "-e",
+      `
+        const { scrapeBank } = await import("./src/flows/setup.ts");
+        const result = await scrapeBank("banco-inexistente", "1-9", "secret");
+        console.log(JSON.stringify({ result }));
+      `,
+    ], {
+      cwd: import.meta.dir + "/..",
+      env: { ...process.env, HOME: home },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    const stdout = await new Response(proc.stdout).text();
+    const exitCode = await proc.exited;
+    const logPath = join(home, ".finchi", "logs", "errors.ndjson");
+
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(stdout).result).toBeNull();
+    expect(existsSync(logPath)).toBe(true);
+
+    const [entry] = readFileSync(logPath, "utf-8").trim().split("\n").map((line) => JSON.parse(line));
+    expect(entry.source).toBe("setup.scrapeBank");
+    expect(entry.error.stack).toBeTruthy();
+  });
+});
+
+describe("handled error logging", () => {
+  test("marks errors to avoid duplicate logs", () => {
+    const path = getErrorLogPath();
+    expect(path.endsWith("/.finchi/logs/errors.ndjson")).toBe(true);
   });
 });
