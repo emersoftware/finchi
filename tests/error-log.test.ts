@@ -2,6 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
+import pkg from "../package.json";
 import { sanitizeArgv, sanitizeErrorLogText, sanitizeFlags } from "../src/error-log";
 
 const tempDirs: string[] = [];
@@ -77,7 +78,7 @@ describe("cli error logging", () => {
     const entries = readFileSync(logPath, "utf-8").trim().split("\n").map((line) => JSON.parse(line));
     expect(entries).toHaveLength(1);
     expect(entries[0].error.message).toBe("Debes pasar --provider, --model y --api-key.");
-    expect(entries[0].version).toBe("1.1.1");
+    expect(entries[0].version).toBe(pkg.version);
   });
 
   test("includes logPath in json failures", async () => {
