@@ -86,29 +86,25 @@ export async function insertAccount(db: Db, bankId: string, bankName: string): P
   return result[0].id;
 }
 
-/** Scrape a bank and return the result, or null on failure. */
+/** Scrape a bank and return the result, or null if the bank is not found. Throws on scraper failures. */
 export async function scrapeBank(
   bankId: string,
   rut: string,
   password: string,
 ): Promise<{ movements: any[] } | null> {
+  const mod = await import("open-banking-chile");
+  const bank = mod.getBank?.(bankId);
+  if (!bank) {
+    logHandledError(new Error(`Banco "${bankId}" no encontrado.`), {
+      source: "setup.scrapeBank",
+      details: { bankId },
+    });
+    return null;
+  }
   try {
-    const mod = await import("open-banking-chile");
-    const bank = mod.getBank?.(bankId);
-    if (!bank) {
-      logHandledError(new Error(`Banco "${bankId}" no encontrado.`), {
-        source: "setup.scrapeBank",
-        details: { bankId },
-      });
-      return null;
-    }
     const result = await bank.scrape({ rut, password });
     if (!result?.success || !result.movements) {
-      logHandledError(new Error(result?.error || "No se pudo conectar al banco"), {
-        source: "setup.scrapeBank",
-        details: { bankId },
-      });
-      return null;
+      throw new Error(result?.error || "No se pudo conectar al banco");
     }
     return { movements: result.movements };
   } catch (err) {
@@ -116,7 +112,7 @@ export async function scrapeBank(
       source: "setup.scrapeBank",
       details: { bankId },
     });
-    return null;
+    throw err;
   }
 }
 
