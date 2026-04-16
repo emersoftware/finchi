@@ -15,6 +15,11 @@ export interface JsonFailure {
   };
 }
 
+export interface JsonFailureDetails {
+  logPath?: string;
+  [key: string]: unknown;
+}
+
 export function wantsJson(flags: Flags): boolean {
   return flags["json"] === true;
 }
@@ -24,7 +29,7 @@ export function printJsonSuccess<T>(data: T, meta?: Record<string, unknown>): vo
   console.log(JSON.stringify(payload, null, 2));
 }
 
-export function printJsonFailure(code: string, message: string, details?: unknown): void {
+export function printJsonFailure(code: string, message: string, details?: JsonFailureDetails | unknown): void {
   const payload: JsonFailure = { ok: false, error: { code, message, details } };
   console.error(JSON.stringify(payload, null, 2));
 }

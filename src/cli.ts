@@ -5,6 +5,7 @@
 import { appendFlagValue, type Flags } from "./cli-flags";
 export type { Flags } from "./cli-flags";
 import { printJsonFailure, wantsJson } from "./cli-output";
+import { getErrorLogHint, sanitizeErrorForUser, writeErrorLog } from "./error-log";
 
 const HELP_TOPICS: Record<string, string> = {
   default: `
@@ -232,8 +233,10 @@ async function main() {
         ? await COMMANDS["dashboard"]()
         : await COMMANDS["setup"]();
       await mod.run(flags);
-    } catch {
+    } catch (err) {
+      const logPath = writeErrorLog(err, flags);
       console.log("Ejecuta 'finchi setup' para comenzar.");
+      console.error(getErrorLogHint(logPath));
     }
     return;
   }
@@ -252,11 +255,13 @@ async function main() {
 if (import.meta.main) {
   main().catch((err) => {
     const { flags } = parseArgs(process.argv);
-    const message = err instanceof Error ? err.message : String(err);
+    const logPath = writeErrorLog(err, flags);
+    const message = sanitizeErrorForUser(err);
     if (wantsJson(flags)) {
-      printJsonFailure("command_failed", message);
+      printJsonFailure("command_failed", message, { logPath });
     } else {
       console.error("Error:", message);
+      console.error(getErrorLogHint(logPath));
     }
     process.exit(1);
   });
