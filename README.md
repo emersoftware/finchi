@@ -293,7 +293,7 @@ Las variables se cargan desde `~/.finchi/.env` primero, luego desde `.env` en el
 ## Desarrollo local
 
 ```bash
-git clone https://github.com/<user>/finchi
+git clone https://github.com/emersoftware/finchi
 cd finchi
 bun install
 bun run src/cli.ts --help
